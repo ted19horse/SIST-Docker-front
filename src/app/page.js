@@ -5,6 +5,7 @@ export default function Home() {
     <div className={styles.page}>
       <h1>SIST</h1>
       <hr />
+      <h2>Update from CI/CD</h2>
     </div>
   );
 }
