@@ -37,21 +37,62 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.PRIVATE_KEY }}
     
-    # Git clone 방식을 사용하여 EC2에서 직접 프로젝트 복제
-    - name: Clone repository on EC2
+    # 압축 후 전송 방식 사용
+    - name: Create tar archive
+      run: tar -czf project.tar.gz ./*
+    
+    - name: Copy tar file to EC2
+      run: |
+        scp -o StrictHostKeyChecking=no project.tar.gz ubuntu@${{ secrets.HOST }}:/home/ubuntu/
+    
+    # 파일 추출 및 Docker Compose 실행
+    - name: Extract and run Docker Compose
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-          # 이전 디렉토리가 있다면 백업
-          if [ -d "/home/ubuntu/SIST-Docker" ]; then
-            mv /home/ubuntu/SIST-Docker /home/ubuntu/SIST-Docker.bak
-          fi
+          # 디렉토리 준비
+          rm -rf /home/ubuntu/SIST-Docker
+          mkdir -p /home/ubuntu/SIST-Docker
           
-          # GitHub에서 직접 저장소 복제
-          git clone https://github.com/ted19horse/SIST-Docker.git /home/ubuntu/SIST-Docker
+          # 압축 해제
+          tar -xzf /home/ubuntu/project.tar.gz -C /home/ubuntu/SIST-Docker
+          rm /home/ubuntu/project.tar.gz
           
           cd /home/ubuntu/SIST-Docker
           
-          # Docker Compose 실행
-          docker-compose down
-          docker-compose up -d --build
+          # Docker 버전 확인
+          docker --version
+          
+          # Docker Compose 확인 (여러 가지 형태 시도)
+          echo "Checking Docker Compose versions:"
+          docker compose version || echo "docker compose - command not found"
+          docker-compose --version || echo "docker-compose - command not found"
+          
+          # Docker Compose 설치가 필요한 경우
+          if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+            echo "Installing Docker Compose..."
+            sudo apt-get update
+            sudo apt-get install -y docker-compose-plugin
+            
+            # docker-compose 명령어를 위한 심볼릭 링크 생성
+            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+          fi
+          
+          # 다시 Docker Compose 확인
+          echo "After installation check:"
+          docker compose version || echo "docker compose - still not found"
+          docker-compose --version || echo "docker-compose - still not found"
+          
+          # 사용 가능한 Docker Compose 명령어로 실행
+          if command -v docker-compose &> /dev/null; then
+            echo "Using docker-compose command"
+            docker-compose down
+            docker-compose up -d --build
+          elif docker compose version &> /dev/null; then
+            echo "Using docker compose command"
+            docker compose down
+            docker compose up -d --build
+          else
+            echo "ERROR: No Docker Compose command available"
+            exit 1
+          fi
         EOF
