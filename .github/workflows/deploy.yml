@@ -2,7 +2,7 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [ main ]  # main 브랜치에 푸시했을 때 실행
+    branches: [main] # main 브랜치에 푸시했을 때 실행
 
 jobs:
   deploy:
@@ -15,7 +15,7 @@ jobs:
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.PRIVATE_KEY }}
-          
+
       - name: Add EC2 to known hosts
         run: |
           mkdir -p ~/.ssh
@@ -23,4 +23,4 @@ jobs:
 
       - name: Deploy to EC2
         run: |
-          ssh ubuntu@${{ secrets.HOST }} "cd ~/app && git pull && docker-compose down && docker-compose up -d --build"
+          ssh ubuntu@${{ secrets.HOST }} "cd /home/ubuntu/SIST-Docker && git pull && docker-compose down && docker-compose up -d --build"
