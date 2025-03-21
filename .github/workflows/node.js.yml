@@ -47,7 +47,7 @@ jobs:
           fi
           
           # GitHub에서 직접 저장소 복제
-          git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git /home/ubuntu/SIST-Docker
+          git clone https://github.com/ted19horse/SIST-Docker.git /home/ubuntu/SIST-Docker
           
           cd /home/ubuntu/SIST-Docker
           
