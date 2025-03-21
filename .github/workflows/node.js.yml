@@ -1,0 +1,57 @@
+# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
+
+name: Node.js CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.5.4
+      with:
+        ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+    - name: Copy files to EC2
+      run: |
+        scp -r -o StrictHostKeyChecking=no ./* ubuntu@${{ secrets.HOST }}:/home/ubuntu/SIST-Docker
+    - name: npm package install
+      run: npm install
+    - name: user add to group
+      run: |
+        sudo usermod -aG docker $USER
+    - name: docker session
+      run: |
+        sudo chmod 777 /var/run/docker.sock
+    - name: run EC2 and docker compose in cell
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
+          # 여러 줄의 명령어를 SSH 를 통해 원격으로 EC2 서버에 전송할 수 있게 한다.
+          # EOF 에서 명령어의 끝을 선언한다.
+          cd /home/ubuntu/SIST-Docker
+          docker-compose down
+          docker-compose up -d --build
+        EOF
+        
+    - run: npm ci
+    - run: npm run build --if-present
+    - run: npm test
