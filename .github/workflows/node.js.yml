@@ -23,7 +23,6 @@ jobs:
       run: npm ci
     - name: Build
       run: npm run build --if-present
-    # test 스크립트가 존재할 경우에만 실행하도록 수정
     - name: Check if test script exists and run
       run: |
         if npm run | grep -q "^  test$"; then
@@ -52,20 +51,43 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.PRIVATE_KEY }}
     
-    # 디렉토리 권한 설정을 위한 단계
-    - name: Prepare target directory
+    # 디버깅을 위한 단계 추가
+    - name: Debug SSH connection
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-          mkdir -p /home/ubuntu/SIST-Docker
+          whoami
+          pwd
+          ls -la /home/ubuntu
+          if [ -d "/home/ubuntu/SIST-Docker" ]; then
+            echo "Directory exists"
+            ls -la /home/ubuntu/SIST-Docker
+          else
+            echo "Directory does not exist, creating..."
+            mkdir -p /home/ubuntu/SIST-Docker
+          fi
+          echo "Setting permissions..."
           sudo chown -R ubuntu:ubuntu /home/ubuntu/SIST-Docker
-          sudo chmod -R 755 /home/ubuntu/SIST-Docker
+          sudo chmod -R 777 /home/ubuntu/SIST-Docker
+          ls -la /home/ubuntu/SIST-Docker
         EOF
     
-    - name: Copy files to EC2
+    # 테스트 디렉토리에 먼저 복사 시도
+    - name: Create test directory and try copying a single file
       run: |
-        scp -r -o StrictHostKeyChecking=no ./* ubuntu@${{ secrets.HOST }}:/home/ubuntu/SIST-Docker
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
+          mkdir -p /home/ubuntu/test-dir
+          sudo chown -R ubuntu:ubuntu /home/ubuntu/test-dir
+          sudo chmod -R 777 /home/ubuntu/test-dir
+        EOF
+        echo "Test content" > test.txt
+        scp -v -o StrictHostKeyChecking=no test.txt ubuntu@${{ secrets.HOST }}:/home/ubuntu/test-dir/
+    
+    - name: Copy files to EC2 with verbose output
+      run: |
+        scp -v -r -o StrictHostKeyChecking=no ./* ubuntu@${{ secrets.HOST }}:/home/ubuntu/SIST-Docker
     
     - name: Deploy to EC2 and run Docker Compose
+      if: ${{ success() }} # 이전 단계가 성공한 경우에만 실행
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
           cd /home/ubuntu/SIST-Docker
