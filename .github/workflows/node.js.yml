@@ -1,7 +1,4 @@
-# This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
-
-name: Node.js CI
+name: Node.js CI/CD
 
 on:
   push:
@@ -10,15 +7,11 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
-
+  build-and-test:
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [18.x, 20.x, 22.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
-
     steps:
     - uses: actions/checkout@v4
     - name: Use Node.js ${{ matrix.node-version }}
@@ -26,32 +19,52 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-
+    - name: Install dependencies
+      run: npm ci
+    - name: Build
+      run: npm run build --if-present
+    - name: Test
+      run: npm test
+  
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Build
+      run: npm run build --if-present
     - name: Set up SSH
       uses: webfactory/ssh-agent@v0.5.4
       with:
         ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+    
+    # 디렉토리 권한 설정을 위한 새 단계 추가
+    - name: Prepare target directory
+      run: |
+        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
+          # 디렉토리가 없는 경우 생성
+          mkdir -p /home/ubuntu/SIST-Docker
+          # 소유권과 권한 설정
+          sudo chown -R ubuntu:ubuntu /home/ubuntu/SIST-Docker
+          sudo chmod -R 755 /home/ubuntu/SIST-Docker
+        EOF
+    
     - name: Copy files to EC2
       run: |
         scp -r -o StrictHostKeyChecking=no ./* ubuntu@${{ secrets.HOST }}:/home/ubuntu/SIST-Docker
-    - name: npm package install
-      run: npm install
-    - name: user add to group
-      run: |
-        sudo usermod -aG docker $USER
-    - name: docker session
-      run: |
-        sudo chmod 777 /var/run/docker.sock
-    - name: run EC2 and docker compose in cell
+    
+    - name: Deploy to EC2 and run Docker Compose
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-          # 여러 줄의 명령어를 SSH 를 통해 원격으로 EC2 서버에 전송할 수 있게 한다.
-          # EOF 에서 명령어의 끝을 선언한다.
           cd /home/ubuntu/SIST-Docker
           docker-compose down
           docker-compose up -d --build
         EOF
-        
-    - run: npm ci
-    - run: npm run build --if-present
-    - run: npm test
