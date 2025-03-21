@@ -23,8 +23,14 @@ jobs:
       run: npm ci
     - name: Build
       run: npm run build --if-present
-    - name: Test
-      run: npm test
+    # test 스크립트가 존재할 경우에만 실행하도록 수정
+    - name: Check if test script exists and run
+      run: |
+        if npm run | grep -q "^  test$"; then
+          npm test
+        else
+          echo "No test script found, skipping tests"
+        fi
   
   deploy:
     needs: build-and-test
@@ -46,13 +52,11 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.PRIVATE_KEY }}
     
-    # 디렉토리 권한 설정을 위한 새 단계 추가
+    # 디렉토리 권한 설정을 위한 단계
     - name: Prepare target directory
       run: |
         ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-          # 디렉토리가 없는 경우 생성
           mkdir -p /home/ubuntu/SIST-Docker
-          # 소유권과 권한 설정
           sudo chown -R ubuntu:ubuntu /home/ubuntu/SIST-Docker
           sudo chmod -R 755 /home/ubuntu/SIST-Docker
         EOF
