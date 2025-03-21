@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build-and-deploy:
+  build-test-and-deploy:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
@@ -32,67 +32,26 @@ jobs:
           echo "No test script found, skipping tests"
         fi
     
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.5.4
+    # SCP 액션을 사용하여 파일 전송
+    - name: Copy files to server
+      uses: appleboy/scp-action@master
       with:
-        ssh-private-key: ${{ secrets.PRIVATE_KEY }}
+        host: ${{ secrets.HOST }}
+        username: ubuntu
+        key: ${{ secrets.PRIVATE_KEY }}
+        source: ".,!node_modules"
+        target: "/home/ubuntu/SIST-Docker"
+        rm: true
     
-    # 압축 후 전송 방식 사용
-    - name: Create tar archive
-      run: tar -czf project.tar.gz ./*
-    
-    - name: Copy tar file to EC2
-      run: |
-        scp -o StrictHostKeyChecking=no project.tar.gz ubuntu@${{ secrets.HOST }}:/home/ubuntu/
-    
-    # 파일 추출 및 Docker Compose 실행
-    - name: Extract and run Docker Compose
-      run: |
-        ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-          # 디렉토리 준비
-          rm -rf /home/ubuntu/SIST-Docker
-          mkdir -p /home/ubuntu/SIST-Docker
-          
-          # 압축 해제
-          tar -xzf /home/ubuntu/project.tar.gz -C /home/ubuntu/SIST-Docker
-          rm /home/ubuntu/project.tar.gz
-          
+    # SSH로 Docker Compose 실행
+    - name: Deploy with Docker Compose
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ubuntu
+        key: ${{ secrets.PRIVATE_KEY }}
+        script: |
           cd /home/ubuntu/SIST-Docker
-          
-          # Docker 버전 확인
           docker --version
-          
-          # Docker Compose 확인 (여러 가지 형태 시도)
-          echo "Checking Docker Compose versions:"
-          docker compose version || echo "docker compose - command not found"
-          docker-compose --version || echo "docker-compose - command not found"
-          
-          # Docker Compose 설치가 필요한 경우
-          if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-            echo "Installing Docker Compose..."
-            sudo apt-get update
-            sudo apt-get install -y docker-compose-plugin
-            
-            # docker-compose 명령어를 위한 심볼릭 링크 생성
-            sudo ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-          fi
-          
-          # 다시 Docker Compose 확인
-          echo "After installation check:"
-          docker compose version || echo "docker compose - still not found"
-          docker-compose --version || echo "docker-compose - still not found"
-          
-          # 사용 가능한 Docker Compose 명령어로 실행
-          if command -v docker-compose &> /dev/null; then
-            echo "Using docker-compose command"
-            docker-compose down
-            docker-compose up -d --build
-          elif docker compose version &> /dev/null; then
-            echo "Using docker compose command"
-            docker compose down
-            docker compose up -d --build
-          else
-            echo "ERROR: No Docker Compose command available"
-            exit 1
-          fi
-        EOF
+          docker compose down || echo "docker compose down failed"
+          docker compose up -d --build
