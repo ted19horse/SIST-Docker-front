@@ -6,6 +6,7 @@ services:
     container_name: frontend
     networks:
       - sist_net
+    restart: always
   nginx:
     image: nginx:alpine
     networks:
