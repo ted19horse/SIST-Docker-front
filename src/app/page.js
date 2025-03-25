@@ -6,6 +6,7 @@ export default function Home() {
       <h1>SIST</h1>
       <h2>Update from CI/CD</h2>
       <h2>2nd Test by EC2+GitHub Actions</h2>
+      <h2>3rd Test by EC2+GitHub Actions</h2>
       <hr />
     </div>
   );
