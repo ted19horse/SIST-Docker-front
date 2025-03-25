@@ -1,43 +1,48 @@
-name: Node.js CI
+name: Node.js CI/CD Pipeline
 
 on:
   push:
     branches: [main] # main 브랜치에 푸시했을 때 실행
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [20.x]
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
     steps:
-      - uses: actions/checkout@v4
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
       - name: Set up SSH
         uses: webfactory/ssh-agent@v0.5.4
         with:
           ssh-private-key: ${{ secrets.PRIVATE_KEY }}
-      - name: Copy files to EC2
-        run: |
-          scp -r -o StrictHostKeyChecking=no ./* ubuntu@${{ secrets.HOST }}:/home/ubuntu/frontend/SIST-Docker-front
-      - name: npm 패키지 설치
-        run: npm install
-      - name: 사용자를 Docker그룹에 추가
-        run: |
-          sudo usermod -aG docker $USER
-      - name: 도커 세션 로드하기
-        run: |
-          sudo chmod 666 /var/run/docker.sock
-      - name: 셀상의 EC2 접근과 도커 compose실행
+
+      - name: 원격 EC2 서버에서 Git Pull 및 Docker 실행
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@${{ secrets.HOST }} << 'EOF'
-            # 여러 줄의 명려어를 SSH를 통해 원격으로 EC2서버에 전송할 수 있게 한다. EOF로 끝을 알려준다.
-            cd /home/ubuntu/frontend/SIST-Docker-front
+            # 디렉토리 존재 여부 확인
+            REPO_DIR="/home/ubuntu/frontend/SIST-Docker-front"
+            
+            if [ -d "$REPO_DIR" ]; then
+              # 디렉토리가 존재하면 업데이트
+              echo "프로젝트 디렉토리가 존재합니다. 업데이트를 진행합니다."
+              cd "$REPO_DIR"
+              git fetch
+              git pull origin main
+            else
+              # 디렉토리가 존재하지 않으면 클론
+              echo "프로젝트 디렉토리가 존재하지 않습니다. 클론을 진행합니다."
+              mkdir -p "$(dirname "$REPO_DIR")"
+              git clone https://github.com/ted19horse/SIST-Docker-front.git "$REPO_DIR"
+              cd "$REPO_DIR"
+            fi
+            
+            # Docker 관련 권한 설정
+            sudo chmod 666 /var/run/docker.sock
+            
+            # 네트워크 존재 여부 확인 및 생성
+            if ! docker network ls | grep -q sist_net; then
+              echo "sist_net 네트워크를 생성합니다."
+              docker network create sist_net
+            fi
+            
+            # Docker Compose 실행
             docker-compose down
             docker-compose up -d --build
           EOF
